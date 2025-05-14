@@ -1,21 +1,10 @@
+#include "huge_file_buffer.h"
+#include "usual_error.h"
+#include <error.h>
 #include <iso646.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
-
-void raise_error(const int errCode, const char* message, const char* funcName)
-{
-	if (*funcName) {
-		fprintf(stderr, "函数“%s”出现错误：%s。返回码：%d。\n", funcName, message, errCode);
-	} else {
-		fprintf(stderr, "出现错误：%s。返回码：%d。\n", message, errCode);
-	}
-}
-
-#define malloc_error() raise_error(1, "malloc函数分配内存失败", __func__);
-#define fopen_error() raise_error(2, "文件打开失败", __func__);
-
-#define mb2byte(mb) ((mb) * 1024 * 1024)
 
 const uint32_t get_file_len(FILE* f)
 {
@@ -29,14 +18,6 @@ const uint32_t get_file_len(FILE* f)
 
 	return _len;
 }
-
-typedef struct HugeFileBuffer {
-	FILE* file;
-	void* blockBuffer;
-	uint32_t bufferSize;	// Byte
-	uint32_t maxBufferSize; // Byte
-	uint32_t currentFileOffset;
-} HugeFileBuffer;
 
 void HugeFileBuffer_open(HugeFileBuffer* obj, const char* filePath)
 {
@@ -74,7 +55,7 @@ void HugeFileBuffer_setMaxBufferSize(HugeFileBuffer* obj, const uint32_t size)
 void HugeFileBuffer_readBlock(HugeFileBuffer* obj)
 {
 	if (obj->maxBufferSize == 0) {
-		raise_error(3, "maxBufferSize不能为0！请检查是否忘记设置或设置失当。", __func__);
+		error(1, 3, "函数“%s”中，maxBufferSize不能为0！请检查是否忘记设置或设置失当。\n", __func__);
 	}
 
 	uint32_t howLong2End = (get_file_len(obj->file) - 1) - obj->currentFileOffset + 1; // 当前文件指针到文件末尾的距离，例如0-1，长为2.
@@ -95,10 +76,4 @@ void HugeFileBuffer_readBlock(HugeFileBuffer* obj)
 
 	fread(obj->blockBuffer, obj->bufferSize, 1, obj->file);
 	obj->currentFileOffset = ftell(obj->file);
-}
-
-int main(void)
-{
-
-	return 0;
 }
