@@ -1,7 +1,9 @@
 #include "adx_file.h"
+#include <arpa/inet.h>
+#include <iso646.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
-#include <iso646.h>
 
 /*
 void memread(void* dest, const void* src, size_t n, uint64_t* ptr)
@@ -65,6 +67,34 @@ type 04 loop data
  *
  */
 
+void adx_head_endian_convert(const int mode, ADXFileHead* adxHead)
+{ // 操作系统能正常读取的是小端序的数据，ADX文件为大端序格式。使用时需要作一些转化。
+	uint16_t (*cov16)(uint16_t n);
+	uint32_t (*cov32)(uint32_t n);
+	if (mode == LITTLE2BIG) {
+		cov16 = htons;
+		cov32 = htonl;
+	} else if (mode == BIG2LITTLE) {
+		cov16 = ntohs;
+		cov32 = ntohl;
+	}
+	// 这样的设计，允许一个函数皆可用于大转小与小转大。
+
+	adxHead->head = cov16(adxHead->head);
+	adxHead->dataOffset = cov16(adxHead->dataOffset);
+	adxHead->sampleRate = cov32(adxHead->sampleRate);
+	adxHead->sampleCount = cov32(adxHead->sampleCount);
+	adxHead->highPassCutoff = cov16(adxHead->highPassCutoff);
+
+	if (adxHead->loopDataStyle == 0x03 or adxHead->loopDataStyle == 0x04) {
+		adxHead->loopFlag = cov32(adxHead->loopFlag);
+		adxHead->loopStartSample = cov32(adxHead->loopStartSample);
+		adxHead->loopStartByte = cov32(adxHead->loopStartByte);
+		adxHead->loopEndSample = cov32(adxHead->loopEndSample);
+		adxHead->loopEndByte = cov32(adxHead->loopEndByte);
+	}
+}
+
 void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer) {
 	memcpy(	&(adxHead->head),		dataBuffer + 0x00,	2	);
 	memcpy(	&(adxHead->dataOffset),		dataBuffer + 0x02,	2	);
@@ -85,49 +115,59 @@ void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer) {
 		memcpy(	&(adxHead->loopEndSample),	dataBuffer + 0x24,	4	);
 		memcpy(	&(adxHead->loopEndByte),	dataBuffer + 0x28,	4	);
 	}
-	else if (adxHead->loopDataStyle == 0x04){
+	else if (adxHead->loopDataStyle == 0x04) {
 		memcpy(	&(adxHead->loopFlag),		dataBuffer + 0x24,	4	);
 		memcpy(	&(adxHead->loopStartSample),	dataBuffer + 0x28,	4	);
 		memcpy(	&(adxHead->loopStartByte),	dataBuffer + 0x2c,	4	);
 		memcpy(	&(adxHead->loopEndSample),	dataBuffer + 0x30,	4	);
 		memcpy(	&(adxHead->loopEndByte),	dataBuffer + 0x34,	4	);
 	}
+
+	adx_head_endian_convert(BIG2LITTLE, adxHead);
 }
 
-void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead) {
+void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead)
+{ // 打印文件头信息，可选向文件打印。令有宏定义，名字无“f”，默认向stdout打印。
 	fprintf(outFile,
-			"head: 0x%x\ndata offset: 0x%x\nformat: %u\nblock size: %u\nbits per sample: %u\nchannel count: %u\nsample rate: %u\nsample count: %u\nhigh-pass cutoff: %u\nloop data style: %u\nencryption flag: %u\n",
-			adxHead->head,
-			adxHead->dataOffset,
-			adxHead->format,
-			adxHead->blockSize,
-			adxHead->bitsPerSample,
-			adxHead->channelCount,
-			adxHead->sampleRate,
-			adxHead->sampleCount,
-			adxHead->highPassCutoff,
-			adxHead->loopDataStyle,
-			adxHead->encryptionFlag
-	       );
+	    "head: 0x%x\ndata offset: 0x%x\nformat: %u\nblock size: %u\nbits per sample: %u\nchannel count: %u\nsample rate: %u\nsample count: %u\nhigh-pass cutoff: %u\nloop data style: %u\nencryption flag: %u\n",
+	    adxHead->head,
+	    adxHead->dataOffset,
+	    adxHead->format,
+	    adxHead->blockSize,
+	    adxHead->bitsPerSample,
+	    adxHead->channelCount,
+	    adxHead->sampleRate,
+	    adxHead->sampleCount,
+	    adxHead->highPassCutoff,
+	    adxHead->loopDataStyle,
+	    adxHead->encryptionFlag);
 	if (adxHead->loopDataStyle == 0x03 or adxHead->loopDataStyle == 0x04) {
 		fprintf(outFile,
-				"loop flag:%u\nloop start sample:%u\nloop start style:%u\nloop end sample:%u\nloop end style:%u\n",
-				adxHead->loopFlag,
-				adxHead->loopStartSample,
-				adxHead->loopStartByte,
-				adxHead->loopEndSample,
-				adxHead->loopEndByte
-		);
+		    "loop flag: %u\nloop start sample: %u\nloop start byte: 0x%x\nloop end sample: %u\nloop end byte: 0x%x\n",
+		    adxHead->loopFlag,
+		    adxHead->loopStartSample,
+		    adxHead->loopStartByte,
+		    adxHead->loopEndSample,
+		    adxHead->loopEndByte);
 	}
+
+	fputc('\n', outFile);
 }
 
-uint32_t adx_calc_len(const ADXFileHead* adxHead) {
+uint32_t adx_calc_len(const ADXFileHead* adxHead)
+{ // 此函数必须弃用：计算思路由AI提供，然而经验证根本不科学。
 	uint32_t len_head, len_data, len_dummyFrame;
-	
+
 	len_head = 0x04 + adxHead->dataOffset - 1; // 从文件0x00到正文前的部分
 	len_data = adxHead->blockSize * adxHead->channelCount * adxHead->sampleCount;
-	//len_dummyFrame = 
+	// len_dummyFrame =
 	printf("0x%x\n", len_data + len_head);
 
 	return 0;
 }
+
+bool adx_isHead(const void* dataBuffer)
+{
+	uint16_t head, dataOffset;
+	memcpy(&head, dataBuffer, 2);
+	memcpy(&dataOffset, dataBuffer + 2, 2);

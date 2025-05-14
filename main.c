@@ -4,7 +4,8 @@
 
 int main(int argc, char** argv)
 {
-	FILE* adxfile = fopen("B4VSTGUN.adx", "rb");
+	// FILE* adxfile = fopen("B4VSTGUN.adx", "rb");
+	FILE* adxfile = fopen("09_boss1_44k.adx", "rb");
 	void* data = malloc(10 * 1024 * 1024);
 	if (!(adxfile && data)) {
 		return 1;
