@@ -1,4 +1,4 @@
-SRC = main.c adx_file.c huge_file_buffer.c
+SRC = main.c adx_file.c
 INCLUDE = ./
 TARGET = adx_scanner
 
@@ -7,3 +7,8 @@ CFLAGS = -I$(INCLUDE)
 
 $(TARGET) : $(SRC)
 	$(CC) $(SRC) $(CFLAGS) -o $(TARGET)
+
+TARGET_I = adx_scanner.i
+.PHONY : debug
+debug : $(SRC)
+	$(CC) $(SRC) -E $(CFLAGS) -o $(TARGET_I)

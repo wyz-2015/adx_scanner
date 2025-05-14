@@ -3,7 +3,9 @@
 #include <iso646.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include "usual_error.h"
 
 /*
 void memread(void* dest, const void* src, size_t n, uint64_t* ptr)
@@ -67,6 +69,16 @@ type 04 loop data
  *
  */
 
+long get_file_len(FILE* f)
+{
+	long posBackup = ftell(f);
+	fseek(f, 0, 2);
+	long _len = ftell(f);
+	fseek(f, posBackup, 0);
+
+	return _len;
+}
+
 void adx_head_endian_convert(const int mode, ADXFileHead* adxHead)
 { // 操作系统能正常读取的是小端序的数据，ADX文件为大端序格式。使用时需要作一些转化。
 	uint16_t (*cov16)(uint16_t n);
@@ -95,7 +107,15 @@ void adx_head_endian_convert(const int mode, ADXFileHead* adxHead)
 	}
 }
 
-void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer) {
+void adx_read_head(ADXFileHead* adxHead, FILE* f) // const void* dataBuffer)
+{						  // 如果确定是adx文件的开头，则读取文件头信息
+	long posBackup = ftell(f);
+	void* dataBuffer = malloc(0x38); // 记载信息的文件头最长也就0x38 byte
+	if (not dataBuffer) {
+		malloc_error();
+	}
+	fread(dataBuffer, 0x38, 1, f);
+
 	memcpy(	&(adxHead->head),		dataBuffer + 0x00,	2	);
 	memcpy(	&(adxHead->dataOffset),		dataBuffer + 0x02,	2	);
 	memcpy(	&(adxHead->format),		dataBuffer + 0x04,	1	);
@@ -124,6 +144,9 @@ void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer) {
 	}
 
 	adx_head_endian_convert(BIG2LITTLE, adxHead);
+
+	fseek(f, posBackup, 0);
+	free(dataBuffer);
 }
 
 void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead)
@@ -166,8 +189,109 @@ uint32_t adx_calc_len(const ADXFileHead* adxHead)
 	return 0;
 }
 
-bool adx_isHead(const void* dataBuffer)
-{
+bool adx_isHead(FILE* f)
+{ // 当前文件指针是否正指向一个adx文件的开头
+	long posBackup = ftell(f);
+
 	uint16_t head, dataOffset;
-	memcpy(&head, dataBuffer, 2);
-	memcpy(&dataOffset, dataBuffer + 2, 2);
+	fread(&head, 0x2, 1, f);
+	fread(&dataOffset, 0x2, 1, f);
+	head = ntohs(head);
+	dataOffset = ntohs(dataOffset);
+
+	if (head != 0x8000) {
+		fseek(f, posBackup, 0); // 文件指针复位。
+		return false;
+	}
+
+	fseek(f, dataOffset - 0x6, 1);
+	char sign[7] = { 0 }; // 验证adx文件签名“(c)CRI”。
+	fread(sign, 6, 1, f);
+
+	fseek(f, posBackup, 0); // 文件指针复位。
+
+	return strcmp(sign, "(c)CRI") == 0;
+}
+
+bool adx_isDummyFrame(FILE* f)
+{ // 和判断头不一样，判断是否为结尾的虚拟帧。
+	long posBackup = ftell(f);
+
+	uint16_t head, dataOffset;
+	fread(&head, 0x2, 1, f);
+	fread(&dataOffset, 0x2, 1, f);
+	head = ntohs(head);
+	dataOffset = ntohs(dataOffset);
+
+	if (head != 0x8001) {
+		fseek(f, posBackup, 0); // 文件指针复位。
+		return false;
+	}
+
+	fseek(f, dataOffset - 0x1, 1);
+	char byte1, byte2;
+	fread(&byte1, 1, 1, f);
+	uint8_t c = fread(&byte2, 1, 1, f);
+
+	fseek(f, posBackup, 0); // 文件指针复位。
+
+	if (c != 1 or byte1 == 0x0) {
+		return true;
+	}
+
+	return false;
+}
+
+void dump_adx(FILE* inFile, const long adxFileStart, const long adxFileEnd, const char* outDir, const unsigned int fileCount)
+{
+	char path[256];
+	sprintf(path, "%s/%02u.adx", outDir, fileCount);
+
+	long fileLen = adxFileEnd - adxFileStart + 1;
+	void* adxFileData = malloc(fileLen);
+	if (not adxFileData) {
+		malloc_error();
+	}
+	FILE* outFile = fopen(path, "wb");
+	if (not outFile) {
+		fopen_error();
+	}
+	fwrite(adxFileData, fileLen, 1, outFile);
+
+	free(adxFileData);
+	fclose(outFile);
+}
+
+void find_adx(FILE* inFile, FILE* logOutFile, const char* outDir)
+{
+	puts("AA");
+	unsigned int fileCount = 0;
+	const long fileEndPos = get_file_len(inFile) - 1;
+	puts("AA");
+	long adxFileStart, adxFileEnd;
+	bool recording = false;
+	while (ftell(inFile) != fileEndPos) {
+		printf("%lu\n", ftell(inFile));
+		if (adx_isHead(inFile)) {
+			adxFileStart = ftell(inFile);
+			recording = true;
+		} else if (adx_isDummyFrame(inFile)) {
+			if (recording) {
+				fseek(inFile, 2, 1);
+				uint16_t offset;
+				fread(&offset, 2, 1, inFile);
+				offset = ntohs(offset);
+
+				fseek(inFile, offset - 0x1, 1);
+				adxFileEnd = ftell(inFile);
+
+				fprintf(logOutFile, "找到第%u个.adx文件：在传入文件的[%lu, %lu]处\n", fileCount, adxFileStart, adxFileEnd);
+				dump_adx(inFile, adxFileStart, adxFileEnd, outDir, fileCount);
+
+				recording = false;
+			}
+		}
+
+		fseek(inFile, 1, 1);
+	}
+}

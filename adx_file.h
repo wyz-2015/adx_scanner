@@ -67,9 +67,11 @@ enum ENDIAN_CONVERT_MODE {
 };
 
 void adx_head_endian_convert(const int mode, ADXFileHead* adxHead);
-void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer);
+// void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer);
+void adx_read_head(ADXFileHead* adxHead, FILE* f);
 // uint32_t adx_calc_len(const ADXFileHead* adxHead);
 void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead);
 #define print_adx_head(adxHead) fprint_adx_head(stdout, adxHead)
+void find_adx(FILE* inFile, FILE* logOutFile, const char* outDir);
 
 #endif
