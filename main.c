@@ -12,12 +12,12 @@
 
 void print_help(const char* programName)
 {
-	printf("%s [参数]\n\t-i/--input_file\t传入文件 必需\n\t-o/--out_dir\t输出文件的目录 必须\n", programName);
+	printf("%s [参数]\n\t-i/--input_file\t传入文件 必需\n\t-o/--out_dir\t输出文件的目录 必需\n\n\t", programName);
 }
 
 int main(int argc, char** argv)
 {
-	char *outDir = NULL, *logFilePath = NULL, *inFilePath = NULL;
+	char *outDir = "", *logFilePath = NULL, *inFilePath = NULL;
 	size_t bufferSize = 0;
 
 	int opt = 0, optIndex = 0;
@@ -44,7 +44,7 @@ int main(int argc, char** argv)
 			break;
 		}
 		case 'i': {
-			inFilePath = NULL;
+			inFilePath = optarg;
 			break;
 		}
 		case 's': {
@@ -59,13 +59,17 @@ int main(int argc, char** argv)
 			fprintf(stderr, "未知选项：-%c\n", (char)optopt);
 			break;
 		}
+		default: {
+			print_help(argv[0]);
+			return 1;
+		}
 		}
 	}
 
 	FILE *logOutFile, *inFile;
 	void* buffer;
 
-	if (logFilePath) {
+	if (logFilePath and *logFilePath) {
 		logOutFile = fopen(logFilePath, "wt");
 		if (not logOutFile) {
 			fopen_error();
@@ -74,7 +78,7 @@ int main(int argc, char** argv)
 		logOutFile = stdout;
 	}
 
-	if (inFilePath) {
+	if (inFilePath and *inFilePath) {
 		inFile = fopen(inFilePath, "rb");
 		if (not inFile) {
 			fopen_error();
@@ -93,13 +97,18 @@ int main(int argc, char** argv)
 
 	puts("预备工作成功完成");
 	/* *************************************************** */
+	// printf("%s: %p\n", __func__, inFile);
 	find_adx(inFile, logOutFile, outDir);
 	/* *************************************************** */
 
-	fclose(inFile);
+	if (inFile) {
+		fclose(inFile);
+	}
 	if (logFilePath) {
 		fclose(logOutFile);
 	}
-	free(buffer);
+	if (buffer) {
+		free(buffer);
+	}
 	return 0;
 }

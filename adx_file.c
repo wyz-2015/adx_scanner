@@ -38,7 +38,7 @@ void read_adx_head(ADXFileHead* adxHead, const void* dataBuffer)
 Address Size    Contains
 ========================
 0x00    2       0x8000
-0x02    2       data offset
+0x02    2       data offset (相对与0x04。即(0x04 + dataOffset)才是音频正文的起始位置)
 0x04    1       format (3 for ADX)
 0x05    1       block size (typically 18)
 0x06    1       bits per sample? (4)
@@ -56,7 +56,7 @@ type 03 loop data
 0x1c    4       loop start sample
 0x20    4       loop start byte
 0x24    4       loop end sample
-0x28    4       loop end byte
+0x28    4       loop end byte (绝对位置)
 
 type 04 loop data
 -----------------
@@ -71,6 +71,7 @@ type 04 loop data
 
 long get_file_len(FILE* f)
 {
+	// printf("%s: %p\n", __func__, f);
 	long posBackup = ftell(f);
 	fseek(f, 0, 2);
 	long _len = ftell(f);
@@ -150,7 +151,7 @@ void adx_read_head(ADXFileHead* adxHead, FILE* f) // const void* dataBuffer)
 }
 
 void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead)
-{ // 打印文件头信息，可选向文件打印。令有宏定义，名字无“f”，默认向stdout打印。
+{ // 打印文件头信息，可选向文件打印。另有宏定义，名字无“f”，默认向stdout打印。
 	fprintf(outFile,
 	    "head: 0x%x\ndata offset: 0x%x\nformat: %u\nblock size: %u\nbits per sample: %u\nchannel count: %u\nsample rate: %u\nsample count: %u\nhigh-pass cutoff: %u\nloop data style: %u\nencryption flag: %u\n",
 	    adxHead->head,
@@ -186,7 +187,7 @@ uint32_t adx_calc_len(const ADXFileHead* adxHead)
 	// len_dummyFrame =
 	printf("0x%x\n", len_data + len_head);
 
-	return 0;
+	return 114514;
 }
 
 bool adx_isHead(FILE* f)
@@ -243,15 +244,21 @@ bool adx_isDummyFrame(FILE* f)
 }
 
 void dump_adx(FILE* inFile, const long adxFileStart, const long adxFileEnd, const char* outDir, const unsigned int fileCount)
-{
+{ // 将adx文件拷贝出来，自动命名为00n.adx
 	char path[256];
-	sprintf(path, "%s/%02u.adx", outDir, fileCount);
+	sprintf(path, "%s/%03u.adx", outDir, fileCount);
 
 	long fileLen = adxFileEnd - adxFileStart + 1;
 	void* adxFileData = malloc(fileLen);
 	if (not adxFileData) {
 		malloc_error();
 	}
+
+	long posBackup = ftell(inFile);
+	fseek(inFile, adxFileStart, 0);
+	fread(adxFileData, fileLen, 1, inFile);
+	fseek(inFile, posBackup, 0);
+
 	FILE* outFile = fopen(path, "wb");
 	if (not outFile) {
 		fopen_error();
@@ -264,19 +271,47 @@ void dump_adx(FILE* inFile, const long adxFileStart, const long adxFileEnd, cons
 
 void find_adx(FILE* inFile, FILE* logOutFile, const char* outDir)
 {
-	puts("AA");
-	unsigned int fileCount = 0;
-	const long fileEndPos = get_file_len(inFile) - 1;
-	puts("AA");
-	long adxFileStart, adxFileEnd;
-	bool recording = false;
+	// printf("%s: %p\n", __func__, inFile);
+	unsigned int fileCount = 0, adxHeadCount = 0;
+	const long fileEndPos = get_file_len(inFile);
+	long adxFileStart, adxFileEnd, mayBeEndDummyFrame;
+	bool foundEndDummyFrame = false;
+	ADXFileHead* adxHead = (ADXFileHead*)malloc(sizeof(ADXFileHead));
+
 	while (ftell(inFile) != fileEndPos) {
-		printf("%lu\n", ftell(inFile));
+		// printf("0x%lx\n", ftell(inFile));
 		if (adx_isHead(inFile)) {
+			// recording = true;
+			adxHeadCount += 1;
+			if (adxHeadCount == 2) {
+				fseek(inFile, mayBeEndDummyFrame, 0);
+				foundEndDummyFrame = true;
+				adxHeadCount = 0;
+				continue;
+			}
+			/* 从无开始，读取到第1个ADXHead，计数器+1，流程正常
+			 * 一旦发现计数器为2，即当前已经找到了2个ADXHead，则最后找到的疑似虚拟帧的一定是一个真的末尾虚拟帧
+			 * 此后故意跳转到最后发现的虚拟帧处，并告知这个虚拟帧是末尾虚拟帧。随流程保存
+			 */
+
 			adxFileStart = ftell(inFile);
-			recording = true;
+
+			/* 发现头，则读取头信息 */
+			adx_read_head(adxHead, inFile);
+
+			/* 如果能通过文件头信息直接定位到文件尾，则直接诱导到结尾虚拟帧，随流程dump出来 */
+			if (adxHead->loopDataStyle == 0x03 or adxHead->loopDataStyle == 0x04) {
+				if (adxHead->loopFlag) {
+					fseek(inFile, adxHead->loopEndByte, 1);
+					foundEndDummyFrame = true;
+					continue;
+				}
+			}
+
 		} else if (adx_isDummyFrame(inFile)) {
-			if (recording) {
+			mayBeEndDummyFrame = ftell(inFile);
+
+			if (foundEndDummyFrame) { // 文件保存
 				fseek(inFile, 2, 1);
 				uint16_t offset;
 				fread(&offset, 2, 1, inFile);
@@ -285,13 +320,37 @@ void find_adx(FILE* inFile, FILE* logOutFile, const char* outDir)
 				fseek(inFile, offset - 0x1, 1);
 				adxFileEnd = ftell(inFile);
 
-				fprintf(logOutFile, "找到第%u个.adx文件：在传入文件的[%lu, %lu]处\n", fileCount, adxFileStart, adxFileEnd);
+				fprintf(logOutFile, "找到第%u个.adx文件：在传入文件的[0x%08lx, 0x%08lx]处\n", fileCount, adxFileStart, adxFileEnd);
+				fprint_adx_head(logOutFile, adxHead);
 				dump_adx(inFile, adxFileStart, adxFileEnd, outDir, fileCount);
 
-				recording = false;
+				fileCount += 1;
+				foundEndDummyFrame = false;
+				adxHeadCount = 0;
+				/*
+				adxFileStart = 0;
+				adxFileEnd = 0;
+				mayBeEndDummyFrame = 0;
+				*/
 			}
 		}
 
 		fseek(inFile, 1, 1);
+	}
+	/* 收尾时，保存下最后一份文件 */
+	fseek(inFile, mayBeEndDummyFrame + 2, 1);
+	uint16_t offset;
+	fread(&offset, 2, 1, inFile);
+	offset = ntohs(offset);
+
+	fseek(inFile, offset - 0x1, 1);
+	adxFileEnd = ftell(inFile);
+
+	fprintf(logOutFile, "找到第%u个.adx文件：在传入文件的[0x%08lx, 0x%08lx]处\n", fileCount, adxFileStart, adxFileEnd);
+	fprint_adx_head(logOutFile, adxHead);
+	dump_adx(inFile, adxFileStart, adxFileEnd, outDir, fileCount);
+
+	if (adxHead) {
+		free(adxHead);
 	}
 }
