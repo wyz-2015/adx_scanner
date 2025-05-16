@@ -2,6 +2,7 @@
 #define _ADX_FILE_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 #include <stdio.h>
 /*
