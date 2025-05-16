@@ -66,12 +66,19 @@ enum ENDIAN_CONVERT_MODE {
 	LITTLE2BIG = 1
 };
 
+long get_file_len(FILE* f);
+
+bool adx_isHead(FILE* f);
+bool adx_isDummyFrame(FILE* f);
+
 void adx_head_endian_convert(const int mode, ADXFileHead* adxHead);
 // void adx_read_head(ADXFileHead* adxHead, const void* dataBuffer);
 void adx_read_head(ADXFileHead* adxHead, FILE* f);
 // uint32_t adx_calc_len(const ADXFileHead* adxHead);
 void fprint_adx_head(FILE* outFile, const ADXFileHead* adxHead);
 #define print_adx_head(adxHead) fprint_adx_head(stdout, adxHead)
+void dump_adx(FILE* inFile, const long adxFileStart, const long adxFileEnd, const char* outDir, const unsigned int fileCount);
 void find_adx(FILE* inFile, FILE* logOutFile, const char* outDir);
+// void find_adx2(FILE* inFile, FILE* logOutFile);
 
 #endif

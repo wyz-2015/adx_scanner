@@ -74,8 +74,10 @@ int main(int argc, char** argv)
 		if (not logOutFile) {
 			fopen_error();
 		}
+		printf("信息将输出到文件：%s\n", logFilePath);
 	} else {
 		logOutFile = stdout;
+		puts("信息将输出到stdout。");
 	}
 
 	if (inFilePath and *inFilePath) {
@@ -83,6 +85,7 @@ int main(int argc, char** argv)
 		if (not inFile) {
 			fopen_error();
 		}
+		printf("读入文件：%s\n", inFilePath);
 
 		if (bufferSize) {
 			buffer = malloc(mb2byte(bufferSize));
@@ -92,6 +95,7 @@ int main(int argc, char** argv)
 			if (setvbuf(inFile, buffer, _IOFBF, mb2byte(bufferSize)) != 0) {
 				error(1, ENOMEM, "设定缓冲区失败\n");
 			}
+			printf("已设定缓冲区大小：%lu MiB, 合%lu Byte。\n", bufferSize, mb2byte(bufferSize));
 		}
 	}
 
@@ -99,6 +103,7 @@ int main(int argc, char** argv)
 	/* *************************************************** */
 	// printf("%s: %p\n", __func__, inFile);
 	find_adx(inFile, logOutFile, outDir);
+	// find_adx2(inFile, logOutFile);
 	/* *************************************************** */
 
 	if (inFile) {

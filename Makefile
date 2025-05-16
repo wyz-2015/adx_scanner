@@ -3,12 +3,12 @@ INCLUDE = ./
 TARGET = adx_scanner
 
 CC = gcc
-CFLAGS = -I$(INCLUDE)
+CFLAGS = -I$(INCLUDE) #-g
 
 $(TARGET) : $(SRC)
 	$(CC) $(SRC) $(CFLAGS) -o $(TARGET)
 
-TARGET_I = adx_scanner.i
-.PHONY : debug
-debug : $(SRC)
-	$(CC) $(SRC) -E $(CFLAGS) -o $(TARGET_I)
+#TARGET_I = adx_scanner.i
+#.PHONY : debug
+#debug : $(SRC)
+#	$(CC) $(SRC) -E $(CFLAGS) -o $(TARGET_I)
