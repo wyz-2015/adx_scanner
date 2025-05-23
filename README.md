@@ -25,7 +25,7 @@
 
 在下日常使用`Kubuntu`，只知道本工具在Linux下编译运行是没有问题的。
 
-很抱歉在下没法在`Windows`上进行测试。我只能知道Windows上编译时，应该将`Makefile`中的`TARGET=adx_scanner`改为`TARGET=adx_scanner.exe`。如果阁下知道在Windows上编译时的额外注意事项，敬请指出。
+很抱歉在下没法在`Windows`上进行测试。<s>我只能知道Windows上编译时，应该将`Makefile`中的`TARGET=adx_scanner`改为`TARGET=adx_scanner.exe`。</s>如果阁下知道在Windows上编译时的额外注意事项，敬请指出。
 
 如果准备妥当，编译只需要键入命令：
 
