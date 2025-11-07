@@ -51,11 +51,11 @@ static error_t parse_opt(int key, char* arg, struct argp_state* state)
 			}
 		case 's':
 			{
-				if (sscanf(arg, "%lu", &(arguments->bufferSize)) != 1) {
-					error(1, EIO, "读取 -s / --buffer_size 的参数“%s”失败\n", arg);
+				if (arg == NULL or sscanf(arg, "%lu", &(arguments->bufferSize)) != 1) {
+					error(EIO, EIO, "读取 -s / --buffer_size 的参数“%s”失败", arg);
 				}
 				if(arguments->bufferSize == 0) {
-					error(0, EINVAL, "不允许设置缓冲区大小为0，程序将维持默认设置执行\n");
+					error(0, EINVAL, "不允许设置缓冲区大小为0，程序将维持默认设置执行");
 				}
 				break;
 			}
@@ -123,16 +123,16 @@ int main(int argc, char** argv)
 				malloc_error();
 			}
 			if (setvbuf(inFile, buffer, _IOFBF, bufferSize_byte) != 0) {
-				error(1, ENOMEM, "设定缓冲区失败\n");
+				error(ENOMEM, ENOMEM, "设定缓冲区失败");
 			}
 			printf("已设定缓冲区大小：%lu MiB, 合%lu Byte。\n", args.bufferSize, bufferSize_byte);
 		}
 	} else {
-		error(1, EINVAL, "疑似未传递 -i/--input_file 参数！\n");
+		error(EINVAL, EINVAL, "疑似未传递 -i / --input_file 参数！");
 	}
 
 	if(not args.outDir){
-		error(1, EINVAL, "疑似未传递 -o/--out_dir 参数！\n");
+		error(EINVAL, EINVAL, "疑似未传递 -o / --out_dir 参数！");
 	}
 
 	puts("预备工作成功完成");
